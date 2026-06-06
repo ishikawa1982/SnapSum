@@ -12,6 +12,7 @@ export function ImageCard({ image, index }: Props) {
   const removeImage = useAppStore((s) => s.removeImage);
 
   const detectedCount = image.numbers.filter((n) => !n.excluded).length;
+  const total = image.numbers.find((n) => n.isTotal);
   const hasPhoto = Boolean(image.src);
 
   return (
@@ -23,7 +24,7 @@ export function ImageCard({ image, index }: Props) {
         <div className="flex items-center gap-2">
           {image.status === 'done' && hasPhoto && (
             <span className="text-xs text-slate-400">
-              {detectedCount}件の数字
+              {total ? '合計を自動検出（タップで変更可）' : `${detectedCount}件の数字`}
             </span>
           )}
           <button

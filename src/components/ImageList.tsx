@@ -25,12 +25,14 @@ function EmptyState() {
       </div>
       <div>
         <p className="text-lg font-semibold text-slate-700">
-          写真を撮って、数字をタップ
+          レシートを撮るだけ
         </p>
         <p className="mt-1 text-sm text-slate-500">
-          レシートや値札を撮影すると、写った数字を読み取ります。
+          撮影すると<span className="font-semibold text-emerald-700">合計金額を自動で検出</span>します。
           <br />
-          タップした数字の合計がすぐに出ます。
+          複数のレシートを撮れば、合計が積み上がります。
+          <br />
+          ちがう数字を選びたいときはタップで切り替えできます。
         </p>
       </div>
       <p className="mt-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500">

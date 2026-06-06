@@ -146,6 +146,7 @@ export function wordsToDetectedNumbers(
       selected: false,
       isManual: false,
       excluded: parsed.excluded || lowConfidence,
+      isTotal: false,
     });
   }
 
@@ -168,5 +169,6 @@ export function createManualNumber(
     selected: true,
     isManual: true,
     excluded: false,
+    isTotal: false,
   };
 }

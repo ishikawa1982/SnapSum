@@ -3,6 +3,7 @@ import type { CapturedImage, DetectedNumber } from '../types';
 import { ocrEngine } from './ocr';
 import { prepareImage } from './image';
 import { createManualNumber, wordsToDetectedNumbers } from './parseNumber';
+import { dedupeFragments, pickTotalId } from './receipt';
 
 let imageCounter = 0;
 function makeImageId(): string {
@@ -95,11 +96,17 @@ export const useAppStore = create<AppState>((set, get) => ({
           ),
         }));
       });
-      const numbers = wordsToDetectedNumbers(words, id);
+      // 断片（部分読み）を除去し、合計らしき金額を自動検出して選択しておく。
+      // レシートを撮るだけで、その合計が即座に合計バーへ積み上がる。
+      const numbers = dedupeFragments(wordsToDetectedNumbers(words, id));
+      const totalId = pickTotalId(numbers);
+      const withTotal = numbers.map((n) =>
+        n.id === totalId ? { ...n, selected: true, isTotal: true } : n,
+      );
       set((s) => ({
         images: s.images.map((img) =>
           img.id === id
-            ? { ...img, numbers, status: 'done', progress: 1 }
+            ? { ...img, numbers: withTotal, status: 'done', progress: 1 }
             : img,
         ),
       }));

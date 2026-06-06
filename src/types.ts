@@ -17,6 +17,7 @@ export interface DetectedNumber {
   selected: boolean; // タップで選択中か
   isManual: boolean; // 手動追加・編集されたものか
   excluded: boolean; // 自動判定で金額候補から除外された（グレー表示で救済可能）
+  isTotal: boolean; // レシートの合計として自動検出された数字か
 }
 
 export interface CapturedImage {
