@@ -25,7 +25,4 @@ export interface CapturedImage {
   height: number;
   numbers: DetectedNumber[];
   status: 'ready' | 'error';
-  // AI（Claude）による合計読み取りの状態
-  aiStatus: 'off' | 'reading' | 'done' | 'error';
-  aiError?: string;
 }
