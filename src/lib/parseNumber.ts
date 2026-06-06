@@ -132,6 +132,20 @@ export function createReadNumber(
   };
 }
 
+// AI が読み取った合計から DetectedNumber を生成する（選択済み・座標なし）。
+export function createAiNumber(value: number, imageId: string): DetectedNumber {
+  return {
+    id: makeId(),
+    imageId,
+    rawText: String(value),
+    value,
+    bbox: { x0: 0, y0: 0, x1: 0, y1: 0 },
+    confidence: 100,
+    selected: true,
+    isManual: false,
+  };
+}
+
 // 手動入力された数値から DetectedNumber を生成する（選択済み・isManual）。
 export function createManualNumber(
   value: number,

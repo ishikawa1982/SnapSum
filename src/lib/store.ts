@@ -2,12 +2,59 @@ import { create } from 'zustand';
 import type { BoundingBox, CapturedImage, DetectedNumber } from '../types';
 import { ocrEngine } from './ocr';
 import { prepareImage } from './image';
-import { createManualNumber, createReadNumber } from './parseNumber';
+import {
+  createAiNumber,
+  createManualNumber,
+  createReadNumber,
+} from './parseNumber';
+import { extractReceiptTotal, aiErrorMessage } from './aiOcr';
+import { getApiKey, getModel, hasApiKey } from './settings';
 
 let imageCounter = 0;
 function makeImageId(): string {
   imageCounter += 1;
   return `img_${Date.now().toString(36)}_${imageCounter}`;
+}
+
+type SetFn = (fn: (s: AppState) => Partial<AppState>) => void;
+
+// AI が読み取った数字か（座標を持たず、手動でもないもの）。再読み取り時に差し替える。
+function isAiNumber(n: DetectedNumber): boolean {
+  return !n.isManual && n.bbox.x1 - n.bbox.x0 <= 0 && n.bbox.y1 - n.bbox.y0 <= 0;
+}
+
+// 画像を AI に渡して合計を読み取り、結果を反映する。
+async function runAiWithBlob(
+  imageId: string,
+  blob: Blob,
+  set: SetFn,
+): Promise<void> {
+  try {
+    const result = await extractReceiptTotal(blob, {
+      apiKey: getApiKey(),
+      model: getModel(),
+    });
+    set((s) => ({
+      images: s.images.map((img) => {
+        if (img.id !== imageId) return img;
+        // 以前の AI 検出は差し替える（再読み取りで重複させない）
+        const kept = img.numbers.filter((n) => !isAiNumber(n));
+        const numbers =
+          result.total != null
+            ? [...kept, createAiNumber(result.total, imageId)]
+            : kept;
+        return { ...img, numbers, aiStatus: 'done' as const };
+      }),
+    }));
+  } catch (err) {
+    set((s) => ({
+      images: s.images.map((img) =>
+        img.id === imageId
+          ? { ...img, aiStatus: 'error' as const, aiError: aiErrorMessage(err) }
+          : img,
+      ),
+    }));
+  }
 }
 
 interface AppState {
@@ -19,6 +66,7 @@ interface AppState {
   allNumbers: () => DetectedNumber[];
 
   addImage: (file: File) => Promise<void>;
+  runAi: (imageId: string) => Promise<void>;
   addReadNumber: (imageId: string, value: number, bbox: BoundingBox) => void;
   toggleSelect: (numberId: string) => void;
   editNumber: (numberId: string, value: number) => void;
@@ -45,9 +93,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   addImage: async (file) => {
     const id = makeImageId();
+    const aiOn = hasApiKey();
     try {
       const prepared = await prepareImage(file);
-      // モデルを先読みして、最初のタップ読み取りの待ち時間を隠す
+      // タップ読み取り用 OCR モデルを先読みしておく
       ocrEngine.warmup?.();
       set((s) => ({
         images: [
@@ -59,9 +108,12 @@ export const useAppStore = create<AppState>((set, get) => ({
             height: prepared.height,
             numbers: [],
             status: 'ready',
+            aiStatus: aiOn ? 'reading' : 'off',
           },
         ],
       }));
+      // APIキーがあれば、AI に合計を読み取らせて自動で積み上げる
+      if (aiOn) await runAiWithBlob(id, prepared.blob, set);
     } catch {
       set((s) => ({
         images: [
@@ -73,8 +125,31 @@ export const useAppStore = create<AppState>((set, get) => ({
             height: 0,
             numbers: [],
             status: 'error',
+            aiStatus: 'off',
           },
         ],
+      }));
+    }
+  },
+
+  runAi: async (imageId) => {
+    const img = get().images.find((i) => i.id === imageId);
+    if (!img || !img.src) return;
+    set((s) => ({
+      images: s.images.map((i) =>
+        i.id === imageId ? { ...i, aiStatus: 'reading', aiError: undefined } : i,
+      ),
+    }));
+    try {
+      const blob = await fetch(img.src).then((r) => r.blob());
+      await runAiWithBlob(imageId, blob, set);
+    } catch (err) {
+      set((s) => ({
+        images: s.images.map((i) =>
+          i.id === imageId
+            ? { ...i, aiStatus: 'error', aiError: aiErrorMessage(err) }
+            : i,
+        ),
       }));
     }
   },
@@ -134,6 +209,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           height: 0,
           numbers: [],
           status: 'ready',
+          aiStatus: 'off',
         };
         images.push(target);
       }

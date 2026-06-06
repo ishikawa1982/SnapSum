@@ -1,4 +1,5 @@
 export interface PreparedImage {
+  blob: Blob; // リサイズ済みの画像データ（AI へ送る・再利用する用）
   src: string; // 表示＆切り出し元になる object URL（カラー）
   width: number; // リサイズ後の幅（タップ座標の基準）
   height: number; // リサイズ後の高さ
@@ -28,16 +29,14 @@ export async function prepareImage(file: File): Promise<PreparedImage> {
   ctx.drawImage(bitmap, 0, 0, width, height);
   bitmap.close();
 
-  const src = await new Promise<string>((resolve, reject) => {
+  const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
-      (blob) =>
-        blob
-          ? resolve(URL.createObjectURL(blob))
-          : reject(new Error('画像の変換に失敗しました')),
+      (b) => (b ? resolve(b) : reject(new Error('画像の変換に失敗しました'))),
       'image/jpeg',
       0.92,
     );
   });
+  const src = URL.createObjectURL(blob);
 
-  return { src, width, height };
+  return { blob, src, width, height };
 }

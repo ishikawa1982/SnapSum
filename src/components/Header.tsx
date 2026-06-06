@@ -1,6 +1,11 @@
 import { useAppStore } from '../lib/store';
 
-export function Header() {
+interface Props {
+  onOpenSettings: () => void;
+  aiEnabled: boolean;
+}
+
+export function Header({ onOpenSettings, aiEnabled }: Props) {
   const images = useAppStore((s) => s.images);
   const clearAll = useAppStore((s) => s.clearAll);
   const clearSelection = useAppStore((s) => s.clearSelection);
@@ -19,12 +24,27 @@ export function Header() {
         <h1 className="text-xl font-bold tracking-tight text-brand">SnapSum</h1>
         <span className="text-xs text-slate-400">撮る、足す。</span>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          className="flex items-center gap-1 rounded-lg px-2.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+          aria-label="AI設定"
+        >
+          <span aria-hidden>⚙️</span>
+          <span
+            className={`hidden text-xs sm:inline ${
+              aiEnabled ? 'text-emerald-600' : 'text-slate-400'
+            }`}
+          >
+            {aiEnabled ? 'AI ON' : 'AI OFF'}
+          </span>
+        </button>
         <button
           type="button"
           onClick={clearSelection}
           disabled={!hasImages}
-          className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+          className="rounded-lg px-2.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40"
         >
           選択解除
         </button>
@@ -32,7 +52,7 @@ export function Header() {
           type="button"
           onClick={handleReset}
           disabled={!hasImages}
-          className="rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-40"
+          className="rounded-lg px-2.5 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-40"
         >
           リセット
         </button>
