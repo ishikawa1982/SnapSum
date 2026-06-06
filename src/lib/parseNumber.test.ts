@@ -111,10 +111,25 @@ describe('wordsToDetectedNumbers', () => {
     expect(result.every((n) => n.imageId === 'img1')).toBe(true);
   });
 
-  it('信頼度が低い word は除外フラグを立てて残す', () => {
-    const words = [mk('500', 10)];
-    const result = wordsToDetectedNumbers(words, 'img1', { minConfidence: 30 });
+  it('信頼度が中程度の word はグレー（除外候補）として残す', () => {
+    const words = [mk('500', 40)];
+    const result = wordsToDetectedNumbers(words, 'img1', {
+      minConfidence: 55,
+      hardFloor: 30,
+    });
     expect(result).toHaveLength(1);
     expect(result[0].excluded).toBe(true);
+  });
+
+  it('信頼度が床未満の word は捨てる（チップを出さない）', () => {
+    const words = [mk('500', 10)];
+    const result = wordsToDetectedNumbers(words, 'img1', { hardFloor: 30 });
+    expect(result).toHaveLength(0);
+  });
+
+  it('0 と読めた word はノイズとして捨てる', () => {
+    const words = [mk('0', 90), mk('¥0', 88), mk('480', 80)];
+    const result = wordsToDetectedNumbers(words, 'img1');
+    expect(result.map((n) => n.value)).toEqual([480]);
   });
 });

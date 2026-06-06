@@ -95,9 +95,12 @@ export function parseAmount(rawText: string): ParsedNumber | null {
   const value = Number(match[0]);
   if (!Number.isFinite(value)) return null;
 
+  // 0 はゴマ・汚れ・"O" の誤読など、ほぼノイズなので金額として扱わない。
+  if (value === 0) return null;
+
   // 整数部の桁数（採用ルール: 1〜7 桁程度）
   const integerDigits = Math.abs(Math.trunc(value)).toString().length;
-  const excluded = nonAmount || integerDigits > 7 || value <= 0;
+  const excluded = nonAmount || integerDigits > 7 || value < 0;
 
   return {
     value,
@@ -113,16 +116,21 @@ function makeId(): string {
 }
 
 // OCR の word 配列を DetectedNumber 配列へ変換する。
-// confidence が極端に低い word も「除外候補」として残し、タップで救済可能にする。
+// - confidence が床（hardFloor）未満の語はノイズとみなして捨てる（チップを出さない）。
+// - 床は超えるが minConfidence 未満の語は「除外候補」としてグレー表示し、タップで救済可能にする。
 export function wordsToDetectedNumbers(
   words: OcrWord[],
   imageId: string,
-  options: { minConfidence?: number } = {},
+  options: { minConfidence?: number; hardFloor?: number } = {},
 ): DetectedNumber[] {
-  const minConfidence = options.minConfidence ?? 30;
+  const minConfidence = options.minConfidence ?? 55;
+  const hardFloor = options.hardFloor ?? 30;
   const out: DetectedNumber[] = [];
 
   for (const word of words) {
+    // 信頼度が極端に低い語は断片・ノイズの可能性が高いので、そもそも表示しない
+    if (word.confidence < hardFloor) continue;
+
     const parsed = parseAmount(word.text);
     if (!parsed) continue;
 

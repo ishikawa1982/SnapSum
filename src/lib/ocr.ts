@@ -1,4 +1,4 @@
-import Tesseract, { createWorker } from 'tesseract.js';
+import Tesseract, { createWorker, PSM } from 'tesseract.js';
 import type { BoundingBox } from '../types';
 
 // OCR が認識した最小テキスト単位（word）
@@ -34,6 +34,11 @@ export class TesseractOcrEngine implements OcrEngine {
         await worker.setParameters({
           // 数字に文字を無理やり寄せると誤検出が増えるため、ホワイトリストは使わない。
           // 文字混じりの語はパース側（parseNumber）で除外する。
+          //
+          // レシートの金額や値札は行・ブロックに整列していないことが多く、既定の AUTO では
+          // ほとんど検出できなかった（実測）。SPARSE_TEXT は配置を仮定せず散在する文字を
+          // 拾うため、金額の取りこぼしが減る。
+          tessedit_pageseg_mode: PSM.SPARSE_TEXT,
           // DPI を明示してレイアウト推定を安定させる。
           user_defined_dpi: '300',
           preserve_interword_spaces: '1',

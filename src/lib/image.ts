@@ -39,16 +39,19 @@ export async function prepareImage(file: File): Promise<PreparedImage> {
   // 表示用カラー画像（JPEG で軽量に）
   const src = URL.createObjectURL(await canvasToBlob(canvas, 'image/jpeg'));
 
-  // OCR 用: グレースケール → 適応的二値化（影・かすれに強い）。二値画像は PNG で劣化なく。
+  // OCR 用: グレースケール＋コントラスト伸長。圧縮ノイズを避けるため PNG で渡す。
   preprocessForOcr(ctx, width, height);
   const ocrBlob = await canvasToBlob(canvas, 'image/png');
 
   return { ocrBlob, src, width, height };
 }
 
-// レシート OCR 向けの前処理。
-// グレースケール化したのち、局所平均との差で二値化（adaptive mean threshold）する。
-// 大域的な閾値（Otsu）と違い、影や照明ムラのある写真でも文字を残しやすい。
+// OCR 向けの前処理。
+// グレースケール化し、明暗のパーセンタイルで線形にコントラストを伸長する。
+//
+// 以前は局所適応二値化をかけていたが、木目や紙のテクスチャなど低コントラストの
+// 背景まで黒ノイズに増幅してしまい、誤検出（¥0 だらけ）の温床になっていた。
+// 二値化は Tesseract が内部で行うため、ここでは「文字を読みやすく整える」までに留める。
 function preprocessForOcr(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -58,48 +61,44 @@ function preprocessForOcr(
   const data = image.data;
   const n = width * height;
 
-  // 1) グレースケール（輝度）
-  const gray = new Float32Array(n);
+  // 1) グレースケール（輝度）＋ヒストグラム
+  const gray = new Uint8ClampedArray(n);
+  const hist = new Uint32Array(256);
   for (let i = 0; i < n; i++) {
     const o = i * 4;
-    gray[i] = 0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2];
+    const g =
+      (0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2]) | 0;
+    gray[i] = g;
+    hist[g]++;
   }
 
-  // 2) 積分画像（summed-area table）で局所平均を高速計算
-  const iw = width + 1;
-  const integral = new Float64Array(iw * (height + 1));
-  for (let y = 1; y <= height; y++) {
-    let rowSum = 0;
-    for (let x = 1; x <= width; x++) {
-      rowSum += gray[(y - 1) * width + (x - 1)];
-      integral[y * iw + x] = integral[(y - 1) * iw + x] + rowSum;
-    }
+  // 2) 1〜99 パーセンタイルを黒〜白に割り当てる（外れ値に強いコントラスト伸長）
+  const lo = percentile(hist, n, 0.01);
+  const hi = percentile(hist, n, 0.99);
+  const range = Math.max(1, hi - lo);
+  const lut = new Uint8ClampedArray(256);
+  for (let v = 0; v < 256; v++) {
+    lut[v] = ((v - lo) / range) * 255;
   }
 
-  // 3) 適応的二値化
-  // 窓は文字高に対して十分大きく取り、C は背景ノイズを黒に落とさない程度に。
-  const radius = Math.max(8, Math.round(Math.min(width, height) / 40));
-  const C = 8; // 平均からこの値以上暗ければ「文字（黒）」
-  for (let y = 0; y < height; y++) {
-    const y0 = Math.max(0, y - radius);
-    const y1 = Math.min(height, y + radius + 1);
-    for (let x = 0; x < width; x++) {
-      const x0 = Math.max(0, x - radius);
-      const x1 = Math.min(width, x + radius + 1);
-      const area = (x1 - x0) * (y1 - y0);
-      const sum =
-        integral[y1 * iw + x1] -
-        integral[y0 * iw + x1] -
-        integral[y1 * iw + x0] +
-        integral[y0 * iw + x0];
-      const mean = sum / area;
-      const v = gray[y * width + x] < mean - C ? 0 : 255;
-      const o = (y * width + x) * 4;
-      data[o] = data[o + 1] = data[o + 2] = v;
-    }
+  for (let i = 0; i < n; i++) {
+    const v = lut[gray[i]];
+    const o = i * 4;
+    data[o] = data[o + 1] = data[o + 2] = v;
   }
 
   ctx.putImageData(image, 0, 0);
+}
+
+// 累積ヒストグラムから指定パーセンタイルの輝度値を求める
+function percentile(hist: Uint32Array, total: number, p: number): number {
+  const target = total * p;
+  let acc = 0;
+  for (let v = 0; v < 256; v++) {
+    acc += hist[v];
+    if (acc >= target) return v;
+  }
+  return 255;
 }
 
 function canvasToBlob(

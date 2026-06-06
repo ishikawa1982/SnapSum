@@ -28,3 +28,6 @@ dev-dist
 
 # TS build info
 *.tsbuildinfo
+
+# 実験用スクラッチ（コミットしない）
+.scratch/
