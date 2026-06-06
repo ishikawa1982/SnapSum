@@ -1,7 +1,7 @@
 {
   "name": "snapsum",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "撮る、足す。写真に写った数字をタップして合計するWebアプリ",
   "scripts": {

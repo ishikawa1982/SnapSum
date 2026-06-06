@@ -13,6 +13,33 @@
       content="撮る、足す。写真に写った数字をタップして合計するアプリ SnapSum"
     />
     <title>SnapSum — 撮る、足す。</title>
+    <script>
+      // 起動エラー（モジュール読み込み失敗など）を白画面ではなく画面に出す。
+      // 旧 Service Worker が居れば登録解除して、キャッシュ由来の不具合からも復帰させる。
+      (function () {
+        function show(label, detail) {
+          var root = document.getElementById('root');
+          if (!root || root.getAttribute('data-loaded') === '1') return;
+          root.innerHTML =
+            '<div style="padding:16px;font:13px/1.5 monospace;color:#b91c1c">' +
+            '<b>起動エラー: ' + label + '</b><pre style="white-space:pre-wrap">' +
+            String(detail || '').replace(/[<>&]/g, '_') +
+            '</pre><p style="color:#475569">ページを再読み込みしてください。直らない場合はSafariのサイトデータ削除をお試しください。</p></div>';
+        }
+        window.addEventListener('error', function (e) {
+          show('script', (e && (e.message || e.filename)) + '\n' + ((e.error && e.error.stack) || ''));
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          var r = e && e.reason;
+          show('promise', (r && (r.stack || r.message)) || r);
+        });
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function (rs) {
+            rs.forEach(function (r) { r.unregister(); });
+          }).catch(function () {});
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
