@@ -13,6 +13,7 @@ export type ProgressCallback = (progress: number) => void;
 // OCR を抽象化し、後で Cloud Vision 等に差し替え可能にするインターフェース
 export interface OcrEngine {
   recognize(image: Blob, onProgress?: ProgressCallback): Promise<OcrWord[]>;
+  warmup?(): void; // モデルの事前読み込み（初回タップの待ち時間を隠す）
   terminate?(): Promise<void>;
 }
 
@@ -47,6 +48,11 @@ export class TesseractOcrEngine implements OcrEngine {
       });
     }
     return this.workerPromise;
+  }
+
+  warmup(): void {
+    // 失敗してもここでは握りつぶす（recognize 時に改めて評価される）
+    void this.getWorker().catch(() => {});
   }
 
   async recognize(

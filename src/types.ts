@@ -6,18 +6,16 @@ export interface BoundingBox {
   y1: number;
 }
 
-// OCR の生結果から生成する、画面上の 1 つの数字
+// 画面上の 1 つの数字（タップで読み取った金額 or 手動入力）
 export interface DetectedNumber {
   id: string; // 一意 ID
   imageId: string; // どの画像由来か（複数レシート対応）
-  rawText: string; // OCR の生テキスト 例: "1,280円"
+  rawText: string; // 元テキスト 例: "1,280円"
   value: number; // 数値化した金額 例: 1280
   bbox: BoundingBox; // 画像内の座標（オーバーレイ描画用）
   confidence: number; // OCR 信頼度 0〜100
-  selected: boolean; // タップで選択中か
+  selected: boolean; // 合計に含める対象か
   isManual: boolean; // 手動追加・編集されたものか
-  excluded: boolean; // 自動判定で金額候補から除外された（グレー表示で救済可能）
-  isTotal: boolean; // レシートの合計として自動検出された数字か
 }
 
 export interface CapturedImage {
@@ -26,6 +24,5 @@ export interface CapturedImage {
   width: number;
   height: number;
   numbers: DetectedNumber[];
-  status: 'processing' | 'done' | 'error';
-  progress?: number; // OCR 認識の進捗 0〜1（processing 中のみ）
+  status: 'ready' | 'error';
 }

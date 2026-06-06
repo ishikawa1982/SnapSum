@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { CapturedImage } from '../types';
 import { useAppStore } from '../lib/store';
+import { readAmountAt } from '../lib/tapread';
 import { NumberOverlay } from './NumberOverlay';
 import { ManualNumberList } from './ManualNumberList';
 
@@ -11,19 +12,45 @@ interface Props {
 
 export function ImageCard({ image, index }: Props) {
   const removeImage = useAppStore((s) => s.removeImage);
-  const [expanded, setExpanded] = useState(false);
+  const addReadNumber = useAppStore((s) => s.addReadNumber);
+  const imgRef = useRef<HTMLImageElement>(null);
 
-  const detectedCount = image.numbers.filter((n) => !n.excluded).length;
-  const total = image.numbers.find((n) => n.isTotal);
+  // 読み取り中の表示（タップ位置にスピナー）と、直前の結果メッセージ
+  const [reading, setReading] = useState<{ x: number; y: number } | null>(null);
+  const [notFound, setNotFound] = useState(false);
+
   const hasPhoto = Boolean(image.src);
+  const readCount = image.numbers.filter(
+    (n) => n.bbox.x1 - n.bbox.x0 > 0,
+  ).length;
 
-  // bbox を持つ（オーバーレイに描ける）数字の数。合計以外がいくつ隠れているか。
-  const overlayNumbers = image.numbers.filter(
-    (n) => n.bbox.x1 - n.bbox.x0 > 0 && n.bbox.y1 - n.bbox.y0 > 0,
-  );
-  const hiddenCount = overlayNumbers.filter((n) => !n.isTotal).length;
-  // 合計が見つからない場合は隠す対象がないので最初から全部見せる。
-  const showAll = expanded || !total;
+  const handleTap = async (e: React.MouseEvent<HTMLDivElement>) => {
+    const imgEl = imgRef.current;
+    if (!imgEl || reading) return;
+
+    const rect = imgEl.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const fx = x / rect.width;
+    const fy = y / rect.height;
+    if (fx < 0 || fx > 1 || fy < 0 || fy > 1) return;
+
+    setNotFound(false);
+    setReading({ x, y });
+    if (navigator.vibrate) navigator.vibrate(8);
+    try {
+      const result = await readAmountAt(imgEl, fx, fy);
+      if (result) {
+        addReadNumber(image.id, result.value, result.bbox);
+      } else {
+        setNotFound(true);
+      }
+    } catch {
+      setNotFound(true);
+    } finally {
+      setReading(null);
+    }
+  };
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -32,10 +59,8 @@ export function ImageCard({ image, index }: Props) {
           {hasPhoto ? `写真 ${index + 1}` : '手動入力'}
         </span>
         <div className="flex items-center gap-2">
-          {image.status === 'done' && hasPhoto && (
-            <span className="text-xs text-slate-400">
-              {total ? '合計を自動検出（タップで変更可）' : `${detectedCount}件の数字`}
-            </span>
+          {hasPhoto && readCount > 0 && (
+            <span className="text-xs text-slate-400">{readCount}件読取</span>
           )}
           <button
             type="button"
@@ -48,55 +73,44 @@ export function ImageCard({ image, index }: Props) {
         </div>
       </div>
 
-      {hasPhoto && (
-        <div className="relative bg-slate-900">
-          <img
-            src={image.src}
-            alt={`取り込んだ写真 ${index + 1}`}
-            className="block h-auto w-full select-none"
-            draggable={false}
-          />
-          <NumberOverlay image={image} showAll={showAll} />
+      {hasPhoto && image.status !== 'error' && (
+        <>
+          {/* 画像のどこかをタップするとその周辺の数字を読み取る */}
+          <div className="relative bg-slate-900" onClick={handleTap}>
+            <img
+              ref={imgRef}
+              src={image.src}
+              alt={`取り込んだ写真 ${index + 1}`}
+              className="block h-auto w-full cursor-crosshair select-none"
+              draggable={false}
+            />
+            <NumberOverlay image={image} />
 
-          {image.status === 'processing' && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50 text-white">
-              <Spinner />
-              <span className="text-sm font-medium">数字を読み取り中…</span>
-              {image.progress != null && image.progress > 0 && (
-                <span className="text-xs tabular-nums text-white/80">
-                  {Math.round(image.progress * 100)}%
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+            {reading && (
+              <div
+                className="pointer-events-none absolute"
+                style={{
+                  left: reading.x,
+                  top: reading.y,
+                  transform: 'translate(-50%, -50%)',
+                }}
+              >
+                <Spinner />
+              </div>
+            )}
+          </div>
 
-      {/* 合計の自動検出がズレたとき用に、ほかの数字を一時表示するトグル */}
-      {image.status === 'done' && hasPhoto && total && hiddenCount > 0 && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="w-full border-t border-slate-100 px-3 py-2 text-center text-xs font-medium text-slate-500 hover:bg-slate-50"
-        >
-          {expanded
-            ? '合計だけ表示する'
-            : `ほかの数字を表示（${hiddenCount}件）— 合計がちがうときに修正`}
-        </button>
+          <div className="border-t border-slate-100 px-3 py-2 text-center text-xs text-slate-500">
+            {notFound
+              ? '数字を読み取れませんでした。金額の上をもう一度タップしてください。'
+              : '読み取りたい金額をタップ（タップでON/OFF・長押しで編集）'}
+          </div>
+        </>
       )}
 
       {image.status === 'error' && (
         <div className="px-3 py-3 text-sm text-red-600">
           画像の処理に失敗しました。別の画像をお試しください。
-        </div>
-      )}
-
-      {image.status === 'done' && hasPhoto && detectedCount === 0 && (
-        <div className="border-t border-slate-100 px-3 py-3 text-sm text-slate-500">
-          数字が見つかりませんでした。
-          <span className="text-slate-400">
-            「手動で追加」から金額を入力できます。
-          </span>
         </div>
       )}
 
@@ -109,13 +123,13 @@ export function ImageCard({ image, index }: Props) {
 function Spinner() {
   return (
     <svg
-      className="h-8 w-8 animate-spin text-white"
+      className="h-9 w-9 animate-spin text-white drop-shadow"
       viewBox="0 0 24 24"
       fill="none"
       aria-hidden="true"
     >
       <circle
-        className="opacity-25"
+        className="opacity-30"
         cx="12"
         cy="12"
         r="10"

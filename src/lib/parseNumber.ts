@@ -1,4 +1,3 @@
-import type { OcrWord } from './ocr';
 import type { BoundingBox, DetectedNumber } from '../types';
 
 export interface ParsedNumber {
@@ -115,42 +114,22 @@ function makeId(): string {
   return `n_${Date.now().toString(36)}_${counter}`;
 }
 
-// OCR の word 配列を DetectedNumber 配列へ変換する。
-// - confidence が床（hardFloor）未満の語はノイズとみなして捨てる（チップを出さない）。
-// - 床は超えるが minConfidence 未満の語は「除外候補」としてグレー表示し、タップで救済可能にする。
-export function wordsToDetectedNumbers(
-  words: OcrWord[],
+// タップで読み取った金額から DetectedNumber を生成する（選択済み・bbox 付き）。
+export function createReadNumber(
+  value: number,
   imageId: string,
-  options: { minConfidence?: number; hardFloor?: number } = {},
-): DetectedNumber[] {
-  const minConfidence = options.minConfidence ?? 55;
-  const hardFloor = options.hardFloor ?? 30;
-  const out: DetectedNumber[] = [];
-
-  for (const word of words) {
-    // 信頼度が極端に低い語は断片・ノイズの可能性が高いので、そもそも表示しない
-    if (word.confidence < hardFloor) continue;
-
-    const parsed = parseAmount(word.text);
-    if (!parsed) continue;
-
-    const lowConfidence = word.confidence < minConfidence;
-
-    out.push({
-      id: makeId(),
-      imageId,
-      rawText: parsed.rawText,
-      value: parsed.value,
-      bbox: word.bbox,
-      confidence: word.confidence,
-      selected: false,
-      isManual: false,
-      excluded: parsed.excluded || lowConfidence,
-      isTotal: false,
-    });
-  }
-
-  return out;
+  bbox: BoundingBox,
+): DetectedNumber {
+  return {
+    id: makeId(),
+    imageId,
+    rawText: String(value),
+    value,
+    bbox,
+    confidence: 100,
+    selected: true,
+    isManual: false,
+  };
 }
 
 // 手動入力された数値から DetectedNumber を生成する（選択済み・isManual）。
@@ -168,7 +147,5 @@ export function createManualNumber(
     confidence: 100,
     selected: true,
     isManual: true,
-    excluded: false,
-    isTotal: false,
   };
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import type { DetectedNumber } from '../types';
 import { formatYen } from '../lib/format';
 import { useAppStore } from '../lib/store';
@@ -15,7 +15,9 @@ export function NumberChip({ number, style }: Props) {
   const editNumber = useAppStore((s) => s.editNumber);
   const [animate, setAnimate] = useState(false);
 
-  const handleClick = () => {
+  const handleClick = (e: MouseEvent) => {
+    // 画像側のタップ読み取りに伝播させない（チップはトグル専用）
+    e.stopPropagation();
     setAnimate(true);
     if (navigator.vibrate) navigator.vibrate(8);
     toggleSelect(number.id);
@@ -35,16 +37,9 @@ export function NumberChip({ number, style }: Props) {
   const base =
     'absolute flex min-h-[28px] min-w-[28px] items-center justify-center rounded-md border-2 px-1.5 text-xs font-semibold shadow-sm transition-colors select-none';
 
-  // 合計として自動検出された数字は緑系で強調する。
-  const stateClass = number.isTotal
-    ? number.selected
-      ? 'border-emerald-600 bg-emerald-600 text-white font-bold ring-2 ring-emerald-300'
-      : 'border-emerald-500 bg-white text-emerald-700 font-bold'
-    : number.selected
-      ? 'border-brand bg-brand text-white font-bold'
-      : number.excluded
-        ? 'border-slate-300 bg-white/70 text-slate-400'
-        : 'border-brand/60 bg-white/90 text-brand';
+  const stateClass = number.selected
+    ? 'border-brand bg-brand text-white font-bold'
+    : 'border-brand/60 bg-white/90 text-brand';
 
   return (
     <button
@@ -57,18 +52,13 @@ export function NumberChip({ number, style }: Props) {
       onAnimationEnd={() => setAnimate(false)}
       style={style}
       aria-pressed={number.selected}
-      aria-label={`${number.isTotal ? '合計 ' : ''}${formatYen(number.value)} ${
+      aria-label={`${formatYen(number.value)} ${
         number.selected ? '選択中' : '未選択'
       }`}
       className={`${base} ${stateClass} ${animate ? 'animate-pop' : ''}`}
       title="タップで選択 / 長押し（右クリック）で編集"
     >
-      {number.isTotal && (
-        <span className="mr-0.5 rounded bg-emerald-700/20 px-1 text-[9px] font-bold leading-tight">
-          合計
-        </span>
-      )}
-      {number.selected && !number.isTotal && (
+      {number.selected && (
         <svg
           viewBox="0 0 20 20"
           className="mr-0.5 h-3 w-3 shrink-0"

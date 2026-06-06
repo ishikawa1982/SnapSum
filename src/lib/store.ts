@@ -1,9 +1,8 @@
 import { create } from 'zustand';
-import type { CapturedImage, DetectedNumber } from '../types';
+import type { BoundingBox, CapturedImage, DetectedNumber } from '../types';
 import { ocrEngine } from './ocr';
 import { prepareImage } from './image';
-import { createManualNumber, wordsToDetectedNumbers } from './parseNumber';
-import { dedupeFragments, pickTotalId } from './receipt';
+import { createManualNumber, createReadNumber } from './parseNumber';
 
 let imageCounter = 0;
 function makeImageId(): string {
@@ -20,6 +19,7 @@ interface AppState {
   allNumbers: () => DetectedNumber[];
 
   addImage: (file: File) => Promise<void>;
+  addReadNumber: (imageId: string, value: number, bbox: BoundingBox) => void;
   toggleSelect: (numberId: string) => void;
   editNumber: (numberId: string, value: number) => void;
   removeNumber: (numberId: string) => void;
@@ -45,13 +45,24 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   addImage: async (file) => {
     const id = makeImageId();
-
-    // まずプレビューを処理中状態で積む
-    let prepared;
     try {
-      prepared = await prepareImage(file);
+      const prepared = await prepareImage(file);
+      // モデルを先読みして、最初のタップ読み取りの待ち時間を隠す
+      ocrEngine.warmup?.();
+      set((s) => ({
+        images: [
+          ...s.images,
+          {
+            id,
+            src: prepared.src,
+            width: prepared.width,
+            height: prepared.height,
+            numbers: [],
+            status: 'ready',
+          },
+        ],
+      }));
     } catch {
-      // 画像のデコードに失敗
       set((s) => ({
         images: [
           ...s.images,
@@ -65,69 +76,27 @@ export const useAppStore = create<AppState>((set, get) => ({
           },
         ],
       }));
-      return;
-    }
-
-    set((s) => ({
-      images: [
-        ...s.images,
-        {
-          id,
-          src: prepared.src,
-          width: prepared.width,
-          height: prepared.height,
-          numbers: [],
-          status: 'processing',
-          progress: 0,
-        },
-      ],
-    }));
-
-    try {
-      let lastPercent = -1;
-      const words = await ocrEngine.recognize(prepared.ocrBlob, (p) => {
-        // 整数%が変わったときだけ再描画する
-        const percent = Math.round(p * 100);
-        if (percent === lastPercent) return;
-        lastPercent = percent;
-        set((s) => ({
-          images: s.images.map((img) =>
-            img.id === id ? { ...img, progress: p } : img,
-          ),
-        }));
-      });
-      // 断片（部分読み）を除去し、合計らしき金額を自動検出して選択しておく。
-      // レシートを撮るだけで、その合計が即座に合計バーへ積み上がる。
-      const numbers = dedupeFragments(wordsToDetectedNumbers(words, id));
-      const totalId = pickTotalId(numbers);
-      const withTotal = numbers.map((n) =>
-        n.id === totalId ? { ...n, selected: true, isTotal: true } : n,
-      );
-      set((s) => ({
-        images: s.images.map((img) =>
-          img.id === id
-            ? { ...img, numbers: withTotal, status: 'done', progress: 1 }
-            : img,
-        ),
-      }));
-    } catch {
-      set((s) => ({
-        images: s.images.map((img) =>
-          img.id === id ? { ...img, status: 'error' } : img,
-        ),
-      }));
     }
   },
+
+  addReadNumber: (imageId, value, bbox) =>
+    set((s) => ({
+      images: s.images.map((img) =>
+        img.id === imageId
+          ? {
+              ...img,
+              numbers: [...img.numbers, createReadNumber(value, imageId, bbox)],
+            }
+          : img,
+      ),
+    })),
 
   toggleSelect: (numberId) =>
     set((s) => ({
       images: s.images.map((img) => ({
         ...img,
         numbers: img.numbers.map((n) =>
-          n.id === numberId
-            ? // 救済タップ時は除外フラグも解除して通常チップ化する
-              { ...n, selected: !n.selected, excluded: false }
-            : n,
+          n.id === numberId ? { ...n, selected: !n.selected } : n,
         ),
       })),
     })),
@@ -138,13 +107,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         ...img,
         numbers: img.numbers.map((n) =>
           n.id === numberId
-            ? {
-                ...n,
-                value,
-                rawText: String(value),
-                isManual: true,
-                excluded: false,
-              }
+            ? { ...n, value, rawText: String(value), isManual: true }
             : n,
         ),
       })),
@@ -170,7 +133,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           width: 0,
           height: 0,
           numbers: [],
-          status: 'done',
+          status: 'ready',
         };
         images.push(target);
       }

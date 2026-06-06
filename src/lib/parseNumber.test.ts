@@ -4,9 +4,7 @@ import {
   toHalfWidth,
   looksLikeNonAmount,
   repairDigits,
-  wordsToDetectedNumbers,
 } from './parseNumber';
-import type { OcrWord } from './ocr';
 
 describe('toHalfWidth', () => {
   it('全角数字を半角に変換する', () => {
@@ -93,43 +91,5 @@ describe('looksLikeNonAmount', () => {
   });
   it('通常の金額は非検出', () => {
     expect(looksLikeNonAmount('1280')).toBe(false);
-  });
-});
-
-describe('wordsToDetectedNumbers', () => {
-  const mk = (text: string, confidence: number): OcrWord => ({
-    text,
-    confidence,
-    bbox: { x0: 0, y0: 0, x1: 10, y1: 10 },
-  });
-
-  it('金額 word のみを DetectedNumber 化する', () => {
-    const words = [mk('1,280円', 90), mk('合計', 95), mk('480', 88)];
-    const result = wordsToDetectedNumbers(words, 'img1');
-    expect(result).toHaveLength(2);
-    expect(result.map((n) => n.value)).toEqual([1280, 480]);
-    expect(result.every((n) => n.imageId === 'img1')).toBe(true);
-  });
-
-  it('信頼度が中程度の word はグレー（除外候補）として残す', () => {
-    const words = [mk('500', 40)];
-    const result = wordsToDetectedNumbers(words, 'img1', {
-      minConfidence: 55,
-      hardFloor: 30,
-    });
-    expect(result).toHaveLength(1);
-    expect(result[0].excluded).toBe(true);
-  });
-
-  it('信頼度が床未満の word は捨てる（チップを出さない）', () => {
-    const words = [mk('500', 10)];
-    const result = wordsToDetectedNumbers(words, 'img1', { hardFloor: 30 });
-    expect(result).toHaveLength(0);
-  });
-
-  it('0 と読めた word はノイズとして捨てる', () => {
-    const words = [mk('0', 90), mk('¥0', 88), mk('480', 80)];
-    const result = wordsToDetectedNumbers(words, 'img1');
-    expect(result.map((n) => n.value)).toEqual([480]);
   });
 });
