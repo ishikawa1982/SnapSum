@@ -77,16 +77,30 @@ export const useAppStore = create<AppState>((set, get) => ({
           height: prepared.height,
           numbers: [],
           status: 'processing',
+          progress: 0,
         },
       ],
     }));
 
     try {
-      const words = await ocrEngine.recognize(prepared.blob);
+      let lastPercent = -1;
+      const words = await ocrEngine.recognize(prepared.ocrBlob, (p) => {
+        // 整数%が変わったときだけ再描画する
+        const percent = Math.round(p * 100);
+        if (percent === lastPercent) return;
+        lastPercent = percent;
+        set((s) => ({
+          images: s.images.map((img) =>
+            img.id === id ? { ...img, progress: p } : img,
+          ),
+        }));
+      });
       const numbers = wordsToDetectedNumbers(words, id);
       set((s) => ({
         images: s.images.map((img) =>
-          img.id === id ? { ...img, numbers, status: 'done' } : img,
+          img.id === id
+            ? { ...img, numbers, status: 'done', progress: 1 }
+            : img,
         ),
       }));
     } catch {

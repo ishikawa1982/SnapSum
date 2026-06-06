@@ -51,6 +51,11 @@ export function ImageCard({ image, index }: Props) {
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50 text-white">
               <Spinner />
               <span className="text-sm font-medium">数字を読み取り中…</span>
+              {image.progress != null && image.progress > 0 && (
+                <span className="text-xs tabular-nums text-white/80">
+                  {Math.round(image.progress * 100)}%
+                </span>
+              )}
             </div>
           )}
         </div>

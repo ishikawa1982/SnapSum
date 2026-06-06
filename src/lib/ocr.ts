@@ -8,9 +8,11 @@ export interface OcrWord {
   confidence: number;
 }
 
+export type ProgressCallback = (progress: number) => void;
+
 // OCR を抽象化し、後で Cloud Vision 等に差し替え可能にするインターフェース
 export interface OcrEngine {
-  recognize(image: Blob): Promise<OcrWord[]>;
+  recognize(image: Blob, onProgress?: ProgressCallback): Promise<OcrWord[]>;
   terminate?(): Promise<void>;
 }
 
@@ -18,15 +20,22 @@ export interface OcrEngine {
 // worker を 1 度だけ生成して使い回す（モデルの再読み込みコストを避ける）。
 export class TesseractOcrEngine implements OcrEngine {
   private workerPromise: Promise<Tesseract.Worker> | null = null;
+  private onProgress: ProgressCallback | null = null;
 
   private getWorker(): Promise<Tesseract.Worker> {
     if (!this.workerPromise) {
       this.workerPromise = createWorker('jpn+eng', undefined, {
-        // 進捗ログは必要に応じて UI 側で購読する
+        logger: (m) => {
+          if (m.status === 'recognizing text' && this.onProgress) {
+            this.onProgress(m.progress);
+          }
+        },
       }).then(async (worker) => {
         await worker.setParameters({
-          // 数字・通貨記号・区切りに絞って誤認識を減らす
-          tessedit_char_whitelist: '0123456789.,¥$円，．、 ',
+          // 数字に文字を無理やり寄せると誤検出が増えるため、ホワイトリストは使わない。
+          // 文字混じりの語はパース側（parseNumber）で除外する。
+          // DPI を明示してレイアウト推定を安定させる。
+          user_defined_dpi: '300',
           preserve_interword_spaces: '1',
         });
         return worker;
@@ -35,27 +44,34 @@ export class TesseractOcrEngine implements OcrEngine {
     return this.workerPromise;
   }
 
-  async recognize(image: Blob): Promise<OcrWord[]> {
+  async recognize(
+    image: Blob,
+    onProgress?: ProgressCallback,
+  ): Promise<OcrWord[]> {
     const worker = await this.getWorker();
-    const { data } = await worker.recognize(image, {}, { blocks: true });
+    this.onProgress = onProgress ?? null;
+    try {
+      const { data } = await worker.recognize(image, {}, { blocks: true });
 
-    const words: OcrWord[] = [];
-    // tesseract.js v5: data.words はトップレベルにも入る
-    const rawWords = collectWords(data);
-    for (const w of rawWords) {
-      if (!w.text || !w.text.trim()) continue;
-      words.push({
-        text: w.text,
-        bbox: {
-          x0: w.bbox.x0,
-          y0: w.bbox.y0,
-          x1: w.bbox.x1,
-          y1: w.bbox.y1,
-        },
-        confidence: w.confidence,
-      });
+      const words: OcrWord[] = [];
+      const rawWords = collectWords(data);
+      for (const w of rawWords) {
+        if (!w.text || !w.text.trim()) continue;
+        words.push({
+          text: w.text,
+          bbox: {
+            x0: w.bbox.x0,
+            y0: w.bbox.y0,
+            x1: w.bbox.x1,
+            y1: w.bbox.y1,
+          },
+          confidence: w.confidence,
+        });
+      }
+      return words;
+    } finally {
+      this.onProgress = null;
     }
-    return words;
   }
 
   async terminate(): Promise<void> {

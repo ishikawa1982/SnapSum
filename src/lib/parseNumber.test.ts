@@ -3,6 +3,7 @@ import {
   parseAmount,
   toHalfWidth,
   looksLikeNonAmount,
+  repairDigits,
   wordsToDetectedNumbers,
 } from './parseNumber';
 import type { OcrWord } from './ocr';
@@ -45,6 +46,38 @@ describe('parseAmount', () => {
   it('日付らしき値は除外候補にする', () => {
     const r = parseAmount('2024-01-31');
     expect(r?.excluded).toBe(true);
+  });
+});
+
+describe('repairDigits', () => {
+  it('末尾の O を 0 に補正する', () => {
+    expect(repairDigits('128O')).toBe('1280');
+  });
+  it('通貨・カンマを保ったまま補正する', () => {
+    expect(repairDigits('1,28O円')).toBe('1,280円');
+  });
+  it('S を 5 に補正する', () => {
+    expect(repairDigits('S00')).toBe('500');
+  });
+  it('通常の単語（数字以外の文字を含む）は補正しない', () => {
+    expect(repairDigits('Office')).toBe('Office');
+    expect(repairDigits('合計')).toBe('合計');
+  });
+  it('英字が数字より多い語は誤補正を避けて触らない', () => {
+    expect(repairDigits('SS5')).toBe('SS5');
+  });
+  it('純粋な数字はそのまま', () => {
+    expect(repairDigits('1280')).toBe('1280');
+  });
+});
+
+describe('parseAmount 誤読補正と文字混じり除外', () => {
+  it('誤読された金額を補正して数値化する', () => {
+    expect(parseAmount('1,28O円')?.value).toBe(1280);
+  });
+  it('英字を含む文字列（住所・店名など）は金額とみなさない', () => {
+    expect(parseAmount('Tel123')).toBeNull();
+    expect(parseAmount('Room202')).toBeNull();
   });
 });
 

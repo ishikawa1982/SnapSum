@@ -26,4 +26,5 @@ export interface CapturedImage {
   height: number;
   numbers: DetectedNumber[];
   status: 'processing' | 'done' | 'error';
+  progress?: number; // OCR 認識の進捗 0〜1（processing 中のみ）
 }

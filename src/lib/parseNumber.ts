@@ -21,6 +21,38 @@ function stripCurrency(input: string): string {
   return input.replace(/[¥$￥円]/g, '').replace(/[,，]/g, '');
 }
 
+// OCR が数字を字形の似た英字に誤読しやすい組み合わせ。
+const DIGIT_MAP: Record<string, string> = {
+  O: '0',
+  o: '0',
+  I: '1',
+  l: '1',
+  '|': '1',
+  S: '5',
+  B: '8',
+  Z: '2',
+  z: '2',
+};
+
+// 「ほぼ数字なのに一部が英字に誤読された」トークンを数字へ補正する。
+// 例: "128O" → "1280", "1,28O円" → "1,280円"
+// 誤補正を避けるため、数字以外の通常文字を含む語や、英字が数字より多い語は補正しない。
+export function repairDigits(input: string): string {
+  let digits = 0;
+  let confusable = 0;
+  for (const ch of input) {
+    if (ch >= '0' && ch <= '9') digits++;
+    else if (ch in DIGIT_MAP) confusable++;
+    else if (/[.,¥$￥円，．、\s-]/.test(ch)) continue;
+    // 補正対象外の文字（通常の英字・かな・漢字など）を含む → 金額トークンではない
+    else return input;
+  }
+  if (digits === 0 || confusable === 0) return input;
+  // 英字が数字より多い語（例: "B2B"）は誤補正の恐れがあるため触らない
+  if (confusable > digits) return input;
+  return input.replace(/[OoIl|SBZz]/g, (ch) => DIGIT_MAP[ch] ?? ch);
+}
+
 // 電話番号・日付・時刻・郵便番号らしきパターンか判定する。
 // これらは金額ではない可能性が高いため除外候補にする。
 export function looksLikeNonAmount(rawHalf: string): boolean {
@@ -42,10 +74,15 @@ export function looksLikeNonAmount(rawHalf: string): boolean {
 // 1 つの OCR word を金額候補としてパースする。
 // 金額として全く解釈できない場合は null を返す。
 export function parseAmount(rawText: string): ParsedNumber | null {
-  const half = toHalfWidth(rawText);
+  // 字形の似た英字への誤読を先に補正する
+  const half = repairDigits(toHalfWidth(rawText));
 
   // 数字を 1 つも含まなければ対象外
   if (!/\d/.test(half)) return null;
+
+  // 通貨記号を除いてもなお英字を含む語は、レシート上の文字列とみなして除外する。
+  // （ホワイトリストを使わない分、ここで文字混じりのゴミ数字を弾く）
+  if (/[A-Za-z]/.test(half.replace(/[¥$￥円]/g, ''))) return null;
 
   const nonAmount = looksLikeNonAmount(half);
 
