@@ -35,18 +35,24 @@ export function dedupeFragments(numbers: DetectedNumber[]): DetectedNumber[] {
 }
 
 // レシートの合計金額らしき数字の id を返す。
-// 「合計」の文字自体は OCR で安定して読めないため、キーワードではなく
-// 「有効な金額のうち最もフォントが大きい行」という観察を信号に使う。
-// 高さが同程度なら、より下にある（＝合計欄に近い）方・値が大きい方を優先する。
+//
+// 「合計」の文字自体は OCR で安定して読めないため、キーワードには頼らない。
+// 合計は明細・税の各項目の総和なので、レシート上の金額の中で最大になりやすい、
+// という性質を主な信号に使う（フォント高さより頑健。背の高い誤読の単独数字に釣られない）。
+// 通貨記号（¥ / 円）付きの金額があればそれを優先し、無ければ全候補から選ぶ。
+// 値が同じならフォントが大きい方・より下にある方（＝合計欄に近い）を優先する。
 export function pickTotalId(numbers: DetectedNumber[]): string | null {
   const candidates = numbers.filter((n) => !n.excluded && height(n.bbox) > 0);
   if (candidates.length === 0) return null;
 
-  const best = [...candidates].sort((a, b) => {
+  const yenTagged = candidates.filter((n) => /[¥￥円]/.test(n.rawText));
+  const pool = yenTagged.length > 0 ? yenTagged : candidates;
+
+  const best = [...pool].sort((a, b) => {
+    if (b.value !== a.value) return b.value - a.value; // 値が大きい方
     const dh = height(b.bbox) - height(a.bbox);
-    if (Math.abs(dh) > 2) return dh; // 高さがほぼ同じ(±2px)なら次の基準へ
-    if (b.bbox.y0 !== a.bbox.y0) return b.bbox.y0 - a.bbox.y0; // 下にある方
-    return b.value - a.value; // 値が大きい方
+    if (dh !== 0) return dh; // フォントが大きい方
+    return b.bbox.y0 - a.bbox.y0; // 下にある方
   })[0];
 
   return best.id;
