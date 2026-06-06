@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { CapturedImage } from '../types';
 import { useAppStore } from '../lib/store';
 import { NumberOverlay } from './NumberOverlay';
@@ -10,10 +11,19 @@ interface Props {
 
 export function ImageCard({ image, index }: Props) {
   const removeImage = useAppStore((s) => s.removeImage);
+  const [expanded, setExpanded] = useState(false);
 
   const detectedCount = image.numbers.filter((n) => !n.excluded).length;
   const total = image.numbers.find((n) => n.isTotal);
   const hasPhoto = Boolean(image.src);
+
+  // bbox を持つ（オーバーレイに描ける）数字の数。合計以外がいくつ隠れているか。
+  const overlayNumbers = image.numbers.filter(
+    (n) => n.bbox.x1 - n.bbox.x0 > 0 && n.bbox.y1 - n.bbox.y0 > 0,
+  );
+  const hiddenCount = overlayNumbers.filter((n) => !n.isTotal).length;
+  // 合計が見つからない場合は隠す対象がないので最初から全部見せる。
+  const showAll = expanded || !total;
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -46,7 +56,7 @@ export function ImageCard({ image, index }: Props) {
             className="block h-auto w-full select-none"
             draggable={false}
           />
-          <NumberOverlay image={image} />
+          <NumberOverlay image={image} showAll={showAll} />
 
           {image.status === 'processing' && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50 text-white">
@@ -60,6 +70,19 @@ export function ImageCard({ image, index }: Props) {
             </div>
           )}
         </div>
+      )}
+
+      {/* 合計の自動検出がズレたとき用に、ほかの数字を一時表示するトグル */}
+      {image.status === 'done' && hasPhoto && total && hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="w-full border-t border-slate-100 px-3 py-2 text-center text-xs font-medium text-slate-500 hover:bg-slate-50"
+        >
+          {expanded
+            ? '合計だけ表示する'
+            : `ほかの数字を表示（${hiddenCount}件）— 合計がちがうときに修正`}
+        </button>
       )}
 
       {image.status === 'error' && (
