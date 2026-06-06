@@ -3,8 +3,13 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// GitHub Pages のプロジェクトサイトはサブパス（/<repo>/）配信になるため、
+// ビルド時に BASE_PATH を渡してサブパスへ対応する。ローカル開発では '/'。
+const base = process.env.BASE_PATH || '/';
+
 // https://vitejs.dev/config/
 export default defineConfig({
+  base,
   plugins: [
     react(),
     VitePWA({
