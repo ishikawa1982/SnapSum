@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -7,12 +8,26 @@ import { VitePWA } from 'vite-plugin-pwa';
 // ビルド時に BASE_PATH を渡してサブパスへ対応する。ローカル開発では '/'。
 const base = process.env.BASE_PATH || '/';
 
+const pkg = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf-8'),
+) as { version: string };
+
 // https://vitejs.dev/config/
 export default defineConfig({
   base,
+  // 画面に表示するバージョン情報をビルド時に埋め込む
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [
     react(),
     VitePWA({
+      // Service Worker のキャッシュによる「古い画面が出る・白画面になる」問題を避けるため、
+      // 反復開発中は PWA を自己破棄モードにして SW を無効化する。
+      // （既存端末に残った古い SW も、このビルドを読み込むと自動で登録解除・キャッシュ削除される）
+      // オフライン対応が必要になったら selfDestroying を外して再度有効化する。
+      selfDestroying: true,
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
@@ -24,37 +39,13 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         icons: [
-          {
-            src: 'pwa-192x192.png',
-            sizes: '192x192',
-            type: 'image/png',
-          },
-          {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-          },
+          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
           {
             src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable',
-          },
-        ],
-      },
-      workbox: {
-        // OCR モデル（言語データ・wasm）を含めキャッシュし、オフライン起動を可能にする
-        maximumFileSizeToCacheInBytes: 30 * 1024 * 1024,
-        globPatterns: ['**/*.{js,css,html,svg,png,wasm,traineddata,gz}'],
-        runtimeCaching: [
-          {
-            // Tesseract の CDN 配信物（wasm / lang データ）をキャッシュ
-            urlPattern: /^https:\/\/.*\.(?:wasm|traineddata\.gz|js)$/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'tesseract-assets',
-              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 30 },
-            },
           },
         ],
       },

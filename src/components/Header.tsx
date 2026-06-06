@@ -1,4 +1,5 @@
 import { useAppStore } from '../lib/store';
+import { VERSION_TEXT } from '../lib/version';
 
 export function Header() {
   const images = useAppStore((s) => s.images);
@@ -17,7 +18,9 @@ export function Header() {
     <header className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur pt-safe">
       <div className="flex items-baseline gap-2">
         <h1 className="text-xl font-bold tracking-tight text-brand">SnapSum</h1>
-        <span className="text-xs text-slate-400">撮る、足す。</span>
+        <span className="text-[10px] tabular-nums text-slate-400">
+          {VERSION_TEXT}
+        </span>
       </div>
       <div className="flex items-center gap-2">
         <button
