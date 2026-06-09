@@ -17,6 +17,7 @@ export interface DetectedNumber {
   selected: boolean; // タップで選択中か
   isManual: boolean; // 手動追加・編集されたものか
   excluded: boolean; // 自動判定で金額候補から除外された（グレー表示で救済可能）
+  isTotalCandidate?: boolean; // OCR または近傍検出が「合計」と判定した場合 true
 }
 
 export interface CapturedImage {

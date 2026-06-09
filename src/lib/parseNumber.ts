@@ -115,6 +115,55 @@ function makeId(): string {
   return `n_${Date.now().toString(36)}_${counter}`;
 }
 
+// 合計金額キーワードの正規表現（優先順）
+const TOTAL_KEYWORD_PRIMARY = /^(合計|お会計|総合計|ご請求|税込合計|total|TOTAL|Total)$/;
+const TOTAL_KEYWORD_SECONDARY = /^(小計|支払|請求)$/;
+
+// Tesseract OCR の word 配列を走査し、合計キーワードと同一行にある金額語に
+// isTotal: true を付与して返す。キーワードが見つからなければ入力をそのまま返す。
+export function annotateTotalCandidates(words: OcrWord[]): OcrWord[] {
+  const findNearby = (keywordWords: OcrWord[]): OcrWord | undefined => {
+    for (const kw of keywordWords) {
+      const kwMidY = (kw.bbox.y0 + kw.bbox.y1) / 2;
+      const lineHeight = Math.max(4, kw.bbox.y1 - kw.bbox.y0);
+      const band = lineHeight * 2;
+
+      // 同一行帯にある数字語を探す
+      const candidates = words.filter((w) => {
+        if (w === kw) return false;
+        const wMidY = (w.bbox.y0 + w.bbox.y1) / 2;
+        if (Math.abs(wMidY - kwMidY) > band) return false;
+        // 数字として解釈できるか確認
+        return parseAmount(w.text) !== null;
+      });
+
+      if (candidates.length === 0) continue;
+
+      // 最も右にある候補（右寄せ金額列）を合計とみなす
+      const best = candidates.reduce((a, b) =>
+        b.bbox.x1 > a.bbox.x1 ? b : a,
+      );
+      return best;
+    }
+    return undefined;
+  };
+
+  const primaryKeywords = words.filter((w) =>
+    TOTAL_KEYWORD_PRIMARY.test(w.text.trim()),
+  );
+  const secondaryKeywords = words.filter((w) =>
+    TOTAL_KEYWORD_SECONDARY.test(w.text.trim()),
+  );
+
+  const totalWord =
+    findNearby(primaryKeywords) ?? findNearby(secondaryKeywords);
+  if (!totalWord) return words;
+
+  return words.map((w) =>
+    w === totalWord ? { ...w, isTotal: true } : w,
+  );
+}
+
 // OCR の word 配列を DetectedNumber 配列へ変換する。
 // - confidence が床（hardFloor）未満の語はノイズとみなして捨てる（チップを出さない）。
 // - 床は超えるが minConfidence 未満の語は「除外候補」としてグレー表示し、タップで救済可能にする。
@@ -135,6 +184,7 @@ export function wordsToDetectedNumbers(
     if (!parsed) continue;
 
     const lowConfidence = word.confidence < minConfidence;
+    const isTotal = word.isTotal === true;
 
     out.push({
       id: makeId(),
@@ -143,10 +193,22 @@ export function wordsToDetectedNumbers(
       value: parsed.value,
       bbox: word.bbox,
       confidence: word.confidence,
-      selected: false,
+      selected: isTotal, // 合計と判定された金額は自動選択
       isManual: false,
-      excluded: parsed.excluded || lowConfidence,
+      excluded: isTotal ? false : parsed.excluded || lowConfidence,
+      isTotalCandidate: isTotal || undefined,
     });
+  }
+
+  // 複数の isTotal がある場合、最大値のみ選択状態にする
+  const totalCandidates = out.filter((n) => n.isTotalCandidate);
+  if (totalCandidates.length > 1) {
+    const maxValue = Math.max(...totalCandidates.map((n) => n.value));
+    for (const n of out) {
+      if (n.isTotalCandidate && n.value !== maxValue) {
+        n.selected = false;
+      }
+    }
   }
 
   return out;

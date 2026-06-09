@@ -5,6 +5,7 @@ import {
   looksLikeNonAmount,
   repairDigits,
   wordsToDetectedNumbers,
+  annotateTotalCandidates,
 } from './parseNumber';
 import type { OcrWord } from './ocr';
 
@@ -131,5 +132,82 @@ describe('wordsToDetectedNumbers', () => {
     const words = [mk('0', 90), mk('¥0', 88), mk('480', 80)];
     const result = wordsToDetectedNumbers(words, 'img1');
     expect(result.map((n) => n.value)).toEqual([480]);
+  });
+
+  it('isTotal: true の word は自動選択・isTotalCandidate になる', () => {
+    const words: OcrWord[] = [
+      { text: '1,573', confidence: 90, bbox: { x0: 0, y0: 0, x1: 10, y1: 10 } },
+      { text: '3,201', confidence: 90, bbox: { x0: 0, y0: 50, x1: 10, y1: 60 }, isTotal: true },
+    ];
+    const result = wordsToDetectedNumbers(words, 'img1');
+    const total = result.find((n) => n.isTotalCandidate);
+    expect(total).toBeDefined();
+    expect(total?.value).toBe(3201);
+    expect(total?.selected).toBe(true);
+    expect(total?.excluded).toBe(false);
+  });
+
+  it('isTotal でない word は自動選択されない', () => {
+    const words: OcrWord[] = [
+      { text: '1,573', confidence: 90, bbox: { x0: 0, y0: 0, x1: 10, y1: 10 } },
+    ];
+    const result = wordsToDetectedNumbers(words, 'img1');
+    expect(result[0].selected).toBe(false);
+    expect(result[0].isTotalCandidate).toBeFalsy();
+  });
+});
+
+describe('annotateTotalCandidates', () => {
+  const mkWord = (
+    text: string,
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+  ): OcrWord => ({
+    text,
+    confidence: 90,
+    bbox: { x0, y0, x1, y1 },
+  });
+
+  it('「合計」キーワードと同一行の金額に isTotal を付与する', () => {
+    const words = [
+      mkWord('合計', 10, 100, 50, 120),
+      mkWord('3,201', 200, 100, 260, 120),
+      mkWord('1,573', 200, 50, 260, 70),
+    ];
+    const result = annotateTotalCandidates(words);
+    const totalWord = result.find((w) => w.isTotal);
+    expect(totalWord?.text).toBe('3,201');
+  });
+
+  it('キーワードがない場合は何も変更しない', () => {
+    const words = [
+      mkWord('1,573', 200, 50, 260, 70),
+      mkWord('1,628', 200, 100, 260, 120),
+    ];
+    const result = annotateTotalCandidates(words);
+    expect(result.every((w) => !w.isTotal)).toBe(true);
+  });
+
+  it('同一行に複数の金額がある場合、最も右のものを選ぶ', () => {
+    const words = [
+      mkWord('合計', 10, 100, 50, 120),
+      mkWord('291', 100, 100, 140, 120),   // 消費税（左寄り）
+      mkWord('3,201', 200, 100, 260, 120), // 合計金額（右寄り）
+    ];
+    const result = annotateTotalCandidates(words);
+    const totalWord = result.find((w) => w.isTotal);
+    expect(totalWord?.text).toBe('3,201');
+  });
+
+  it('「お会計」キーワードでも機能する', () => {
+    const words = [
+      mkWord('お会計', 10, 200, 80, 220),
+      mkWord('5,400', 200, 200, 260, 220),
+    ];
+    const result = annotateTotalCandidates(words);
+    const totalWord = result.find((w) => w.isTotal);
+    expect(totalWord?.text).toBe('5,400');
   });
 });

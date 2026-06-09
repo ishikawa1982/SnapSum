@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { CapturedImage, DetectedNumber } from '../types';
 import { ocrEngine } from './ocr';
 import { prepareImage } from './image';
-import { createManualNumber, wordsToDetectedNumbers } from './parseNumber';
+import { annotateTotalCandidates, createManualNumber, wordsToDetectedNumbers } from './parseNumber';
 
 let imageCounter = 0;
 function makeImageId(): string {
@@ -84,7 +84,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       let lastPercent = -1;
-      const words = await ocrEngine.recognize(prepared.ocrBlob, (p) => {
+      const rawWords = await ocrEngine.recognize(prepared.ocrBlob, (p) => {
         // 整数%が変わったときだけ再描画する
         const percent = Math.round(p * 100);
         if (percent === lastPercent) return;
@@ -95,6 +95,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           ),
         }));
       });
+      // Tesseract 使用時: キーワード近傍検出で合計候補に isTotal を付与する
+      // Claude Vision 使用時: isTotal は既に付与済みのため annotateTotalCandidates は実質 no-op
+      const words = annotateTotalCandidates(rawWords);
       const numbers = wordsToDetectedNumbers(words, id);
       set((s) => ({
         images: s.images.map((img) =>

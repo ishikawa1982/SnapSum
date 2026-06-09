@@ -10,6 +10,13 @@ const base = process.env.BASE_PATH || '/';
 // https://vitejs.dev/config/
 export default defineConfig({
   base,
+  resolve: {
+    // @anthropic-ai/sdk が参照する Node.js 組み込みモジュールをブラウザ向けに空スタブへ差し替える
+    alias: {
+      'node:fs': '/dev/null',
+      'node:path': '/dev/null',
+    },
+  },
   plugins: [
     react(),
     VitePWA({
