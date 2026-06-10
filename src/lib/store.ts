@@ -27,6 +27,7 @@ interface AppState {
 
   clearSelection: () => void; // 全選択解除
   clearAll: () => void; // 全画像削除（リセット）
+  loadSharedList: (values: number[]) => void; // 共有URLの数値リストを読み込む
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -197,4 +198,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       return { images: [] };
     }),
+
+  loadSharedList: (values) => {
+    const imageId = makeImageId();
+    const numbers = values.map((v) => createManualNumber(v, imageId));
+    set({
+      images: [{ id: imageId, src: '', width: 0, height: 0, numbers, status: 'done' }],
+    });
+  },
 }));

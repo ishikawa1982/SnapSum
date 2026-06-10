@@ -43,6 +43,10 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // SPAとして全ナビゲーションリクエストをindex.htmlで処理。
+        // これにより共有URL（?や#付き）でPWAが正しく起動する。
+        navigateFallback: 'index.html',
+        navigateFallbackAllowlist: [/^(?!\/__)/],
         // OCR モデル（言語データ・wasm）を含めキャッシュし、オフライン起動を可能にする
         maximumFileSizeToCacheInBytes: 30 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,svg,png,wasm,traineddata,gz}'],

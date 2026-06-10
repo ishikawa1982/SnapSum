@@ -1,16 +1,38 @@
+import { useState } from 'react';
 import { useAppStore } from '../lib/store';
+import { buildShareUrl } from '../lib/sharing';
 
 export function Header() {
   const images = useAppStore((s) => s.images);
+  const allNumbers = useAppStore((s) => s.allNumbers);
   const clearAll = useAppStore((s) => s.clearAll);
   const clearSelection = useAppStore((s) => s.clearSelection);
 
+  const [copyLabel, setCopyLabel] = useState<string | null>(null);
+
   const hasImages = images.length > 0;
+  const selectedValues = allNumbers().filter((n) => n.selected).map((n) => n.value);
+  const hasSelected = selectedValues.length > 0;
 
   const handleReset = () => {
     if (window.confirm('全ての画像・選択・合計をリセットしますか？')) {
       clearAll();
     }
+  };
+
+  const handleShare = async () => {
+    const url = buildShareUrl(selectedValues);
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'SnapSum', url });
+      } catch {
+        // User dismissed the share sheet — ignore
+      }
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    setCopyLabel('コピーしました');
+    setTimeout(() => setCopyLabel(null), 2000);
   };
 
   return (
@@ -20,6 +42,14 @@ export function Header() {
         <span className="text-xs text-slate-400">撮る、足す。</span>
       </div>
       <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleShare}
+          disabled={!hasSelected}
+          className="rounded-lg px-3 py-2 text-sm font-medium text-brand hover:bg-brand/10 disabled:opacity-40"
+        >
+          {copyLabel ?? '共有'}
+        </button>
         <button
           type="button"
           onClick={clearSelection}
